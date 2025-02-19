@@ -79,3 +79,5 @@ srv_gen/
 .idea/
 .vscode/
 .cmake-build-debug/
+__pycache__/
+*.egg-info
