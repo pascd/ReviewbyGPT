@@ -33,8 +33,6 @@ data_extraction_fields:
     description: Title of the paper.
   - key: Publisher
     description: Name of the publisher.
-  - key: Publisher
-    description: Name of the publisher.
   - key: Author
     description: Name of the authors that wrote the paper.
   - key: Year

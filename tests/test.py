@@ -9,7 +9,7 @@ from reviewbygpt.lib.excel_data_parser import ExcelDataParser
 
 if __name__ == '__main__':
     review_parser = ReviewDataParser(config="./config/review_data.yaml")
-    excel_parser = ExcelDataParser(excel_file_path="/home/pedrodias/Documents/git-repos/syst_review_tools/src/pdf_analysis_simplifier/excel-files/analysis_excel_file.xlsx")
+    #excel_parser = ExcelDataParser(excel_file_path="/home/pedrodias/Documents/git-repos/syst_review_tools/src/pdf_analysis_simplifier/excel-files/analysis_excel_file.xlsx")
 
     response = """
     "QE1: The methodology (Constrained Decomposition Grid - CDG) is adequately tailored to the challenges of disassembly tasks, addressing task sequencing and destructive vs. non-destructive methods effectively."
@@ -62,7 +62,7 @@ if __name__ == '__main__':
     cutoff_score = 6.5
 
     # Initialize the Excel sheets
-    excel_parser.create_excel_file()
+    #excel_parser.create_excel_file()
     qa_fields = review_parser.get_all_quality_assessment_fields()
     qa_identifiers = []
     for qa in qa_fields:
@@ -70,18 +70,19 @@ if __name__ == '__main__':
         qa_identifiers.append(f"{qa["id"]} Score")
 
     #qa_identifiers = [qa["id"] for qa in qa_fields]
-    excel_parser.apply_excel_template(qa_sheet_name, qa_identifiers + ["Total Score"])
+    #excel_parser.apply_excel_template(qa_sheet_name, qa_identifiers + ["Total Score"])
     data_extraction_fields = review_parser.get_all_data_extraction_fields()
 
     de_identifiers = [de["key"] for de in data_extraction_fields]
-    excel_parser.apply_excel_template(de_sheet_name, de_identifiers)
+    #excel_parser.apply_excel_template(de_sheet_name, de_identifiers)
     print(de_identifiers)
 
     # Extract QA data and calculate average score
     qa_data = review_parser.get_quality_assessment_text(response)
     paper_score = qa_data.pop("Total Score", 0)
     if qa_data:
-        excel_parser.fill_excel_with_data(qa_sheet_name, {**qa_data, "Total Score": paper_score})
+        print(qa_data)
+        #excel_parser.fill_excel_with_data(qa_sheet_name, {**qa_data, "Total Score": paper_score})
         print(f"Total QA Score: {paper_score}")
     else:
         print(f"No QA data found for response")
@@ -91,7 +92,7 @@ if __name__ == '__main__':
         print(f"Paper score ({paper_score}) meets the cutoff ({cutoff_score}). Extracting DE data...")
         de_data = review_parser.get_data_extraction_text(response)
         if de_data:
-            excel_parser.fill_excel_with_data(de_sheet_name, de_data)
+            pass
+            #excel_parser.fill_excel_with_data(de_sheet_name, de_data)
         else:
             print(f"No DE data found for response.")
-

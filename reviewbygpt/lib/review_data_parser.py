@@ -39,6 +39,13 @@ class ReviewDataParser:
             print("Invalid or missing data extraction fields.")
             return []
         return [{"key": field["key"], "description": field["description"]} for field in data["data_extraction_fields"]]
+    
+    def get_all_excluding_questions(self):
+        data = self.load_yaml_file()
+        if not data or "excluding_questions" not in data:
+            print("Invalid or missing excluding questions.")
+            return []
+        return data["excluding_questions"]
 
     def get_cutoff_score(self):
         data = self.load_yaml_file()
@@ -75,7 +82,7 @@ class ReviewDataParser:
                    f"Year: \n"
                    f"Title: \n"
                    f"ẽtc."
-                   f"Write everything in different lines, without bullet points, and always using the format I am asking you. Thank you.")
+                   f"Write everything in different lines, without bullet points, and always using the format I am asking you. If you cant find a specific information just write Not Specified (N/S). Thank you.")
         return prompt
 
     def preprocess_qa_data(self, qa_data, total_score):

@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class PDFToExcelProcessor:
-    def __init__(self, pdf_folder_path, review_config, qa_sheet_name, de_sheet_name):
+    def __init__(self, pdf_folder_path, review_config, qa_sheet_name, de_sheet_name, max_questions):
         self.pdf_folder_path = pdf_folder_path
         
         self.analysed_folder_path = os.path.join(pdf_folder_path, "analysed")
@@ -33,11 +33,13 @@ class PDFToExcelProcessor:
         self.excel_parser = ExcelDataParser(self.excel_file_path)
         self.review_parser = ReviewDataParser(review_config)
         self.folder_names = ["accepted", "rejected", "sheet"]
+        self.max_questions = max_questions
 
         # Load quality assessment and data extraction fields
         self.qa_fields = self.review_parser.get_all_quality_assessment_fields()
         self.data_extraction_fields = self.review_parser.get_all_data_extraction_fields()
         self.cutoff_score = self.review_parser.get_cutoff_score()
+        self.excluding_questions = self.review_parser.get_all_excluding_questions()
 
     def initiate_chatgpt_manager(self):
         self.chatgpt_manager.launch_chatpgt_page()
@@ -113,12 +115,22 @@ class PDFToExcelProcessor:
         # Initialize ChatGPT manager
         self.initiate_chatgpt_manager()
 
+        # Number of questions made
+        num_question = 0
+        
         for pdf_path in self.get_pdf_paths():
+            
+            if num_question == self.max_questions:
+                self.chatgpt_manager.new_chat()
+                num_question = 0
+            
             try:
                 logger.info(f"Processing file: {pdf_path}")
                 self.chatgpt_manager.input_external_file(pdf_path)
                 
                 time.sleep(random.randint(2, 5))
+                
+                num_question += 1
 
                 # Send analysis prompt and get response
                 prompt = self.review_parser.get_analysis_prompt()
@@ -136,7 +148,18 @@ class PDFToExcelProcessor:
                     logger.info(f"Total QA Score: {paper_score}")
                 else:
                     logger.warning(f"No QA data found for file: {pdf_path}")
-
+                    
+                # Check if any of the excluding questions have a score equal to "0"
+                check_e_question = 0
+                for e_question in self.excluding_questions:
+                    if qa_data[f"{e_question} Score"] == 0:
+                        print(f"Paper does not match the score needed for excluding question: {e_question}")
+                        self.move_rejected_file(pdf_path)
+                        check_e_question += 1
+                
+                if check_e_question != 0:
+                    continue
+                        
                 # Extract and write DE data only if the score meets the cutoff
                 if paper_score and paper_score >= self.cutoff_score:
                     logger.info(f"Paper score ({paper_score}) meets the cutoff ({self.cutoff_score}). Extracting DE data...")
@@ -148,9 +171,7 @@ class PDFToExcelProcessor:
                 else:
                     logger.info(f"Paper score ({paper_score}) does not meet the cutoff ({self.cutoff_score}). Skipping DE data extraction.")
                     self.move_rejected_file(pdf_path)
-
-                # Move the file to the analysed folder
-                self.move_analysed_file(pdf_path)
+                    continue
 
                 time.sleep(random.randint(2, 7))
                 
