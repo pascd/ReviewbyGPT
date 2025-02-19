@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "WebGPTHandler"
+version = "0.1.0"
+description = "A Python handler for interaction with online GPT chats."
+authors = [
+    { name = "Pedro Afonso da Silva Cardoso Dias", email = "pedro.afonso.cardoso.dias@gmail.com" }
+]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "selenium>=4.0.0",
+    "undetected-chromedriver",
+    "fake-useragent",
+]
+
+[tool.setuptools]
+packages = { find = { where = ["src"] } }
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
