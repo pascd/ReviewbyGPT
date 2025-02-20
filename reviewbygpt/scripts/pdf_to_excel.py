@@ -42,8 +42,14 @@ class PDFToExcelProcessor:
         self.excluding_questions = self.review_parser.get_all_excluding_questions()
 
     def initiate_chatgpt_manager(self):
-        self.chatgpt_manager.launch_chatpgt_page()
-        self.chatgpt_manager.login()
+        try:
+            self.chatgpt_manager.launch_chatpgt_page()
+            self.chatgpt_manager.login()
+            pass
+        except Exception as e:
+            print(f"Error initiating chatgpt manager: {e}")
+            return False
+        
         return True
 
     def get_pdf_paths(self):
@@ -83,6 +89,7 @@ class PDFToExcelProcessor:
             try:
                 # Check if folder exists, and if not, create
                 Path(folder).mkdir(parents=True, exist_ok=True)
+                print(f"Created folder {folder}.")
             
             except Exception as e:
                 print(f"Unable to create folder: {folder}.")
@@ -113,7 +120,10 @@ class PDFToExcelProcessor:
         self.excel_parser.apply_excel_template(self.de_sheet_name, de_identifiers)
 
         # Initialize ChatGPT manager
-        self.initiate_chatgpt_manager()
+        if self.initiate_chatgpt_manager(): 
+            pass 
+        else: 
+            return False
 
         # Number of questions made
         num_question = 0
@@ -177,3 +187,9 @@ class PDFToExcelProcessor:
                 
             except Exception as e:
                 logger.error(f"Error processing file '{pdf_path}': {e}")
+        
+        # End connection
+        logging.info("Ending connection with ChatGPT.")
+        self.chatgpt_manager.end()
+        
+        return True
