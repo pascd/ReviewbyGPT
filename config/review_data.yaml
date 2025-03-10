@@ -29,41 +29,41 @@ cutoff_score: 6.5
 excluding_questions: [QE1, QE7, QE8]
 
 data_extraction_fields:
-  - key: Title
+  - key: TITLE
     description: Title of the paper.
-  - key: Publisher
+  - key: PUBLISHER
     description: Name of the publisher.
-  - key: Author
+  - key: AUTHOR
     description: Name of the authors that wrote the paper.
-  - key: Year
+  - key: YEAR
     description: Year of publication
-  - key: Number of manipulators
+  - key: NUMBER OF MANIPULATORS
     description: Number of manipulators used in the study.
-  - key: Manipulator
+  - key: MANIPULATOR
     description: Model of manipulator used.
-  - key: DoF of Manipulator
+  - key: DOF OF MANIPULATOR
     description: Degrees of freedom of the manipulator used.
-  - key: Hardware cell components
+  - key: HARDWARE CELL COMPONENTS
     description: Components that compose the hardware of the automated cell.
-  - key: Software architeture and components
+  - key: SOFTWARE ARCHITECTURE COMPONENTS
     description: Algorithms that compose the software architeture of the automated cell.
-  - key: Vision System
+  - key: VISION SYSTEM
     description: Details about the vision system used
-  - key: Use of CAD model
+  - key: USE OF CAD MODEL
     description: Was a CAD model used for planning, simulation, or real-time guidance?.
-  - key: Level of Implementation
+  - key: LEVEL OF IMPLEMENTATION
     description: Specify Technology Readiness Levels (TRL) if available or if not if it is Conceptual/Experimental/Implemented.
-  - key: Level of Automation
+  - key: LEVEL OF AUTOMATION
     description: Collaborative Cell/Fully automated/Manual.
-  - key: Process Steps
+  - key: PROCESS STEPS
     description: Type of disassembly steps performed.
-  - key: Efficiency Considerations
+  - key: EFFICIENCY CONSIDERATIONS
     description: Cost/Time/Energy.
-  - key: Optimization of Disassembly Task
+  - key: OPTIMIZATION OF DISASSEMBLY TASKS
     description: Does the study focus on optimizing any disassembly step or task?
-  - key: Challenges
+  - key: CHALLENGES
     description: Key challenges addressed in the paper.
-  - key: How to
+  - key: HOW TO
     description: How the authors achieved their goals.
-  - key: Results
+  - key: RESULTS
     description: Key findings, performance metrics, and conclusions of the study.
