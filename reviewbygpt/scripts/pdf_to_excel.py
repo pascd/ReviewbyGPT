@@ -15,6 +15,8 @@ from reviewbygpt.lib.excel_data_parser import ExcelDataParser
 from reviewbygpt.lib.response_handler import ResponseHandler
 from reviewbygpt.lib.review_data_parser import ReviewDataParser
 
+from webgpthandler.scripts.chatgpt_interaction_manager import ChatGPTInteractionManager
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 class OllamaInteractionManager:
     """Class to manage interactions with Ollama API"""
     
-    def __init__(self, base_url="http://localhost:11434", model="qwq:latest", use_gpu=True, max_content_length=None):
+    def __init__(self, base_url="http://localhost:11434", model="gemma2:latest", use_gpu=True, max_content_length=None):
         self.base_url = base_url
         self.model = model
         self.use_gpu = use_gpu
@@ -261,8 +263,9 @@ class OllamaInteractionManager:
 
 class PDFToExcelProcessor:
     def __init__(self, pdf_folder_path, review_config, qa_sheet_name, de_sheet_name, max_questions, 
-                 ollama_url="http://localhost:11434", ollama_model="qwq:latest", 
+                 ollama_url="http://localhost:11434", ollama_model="gemma2:latest", use_handler=True,
                  use_gpu=True, max_content_length=None):
+        
         self.pdf_folder_path = pdf_folder_path
         
         self.analysed_folder_path = os.path.join(pdf_folder_path, "analysed")
@@ -273,6 +276,7 @@ class PDFToExcelProcessor:
         self.qa_sheet_name = qa_sheet_name
         self.de_sheet_name = de_sheet_name
         self.use_gpu = use_gpu
+        self.use_handler = use_handler
         
         # Initialize Ollama manager with GPU support and no content truncation
         self.ollama_manager = OllamaInteractionManager(
@@ -412,14 +416,25 @@ class PDFToExcelProcessor:
         # Initialize the Excel sheets
         self.excel_parser.create_excel_file()
         qa_identifiers = [qa["id"] for qa in self.qa_fields]
-        self.excel_parser.apply_excel_template(self.qa_sheet_name, qa_identifiers + ["Average Score"])
+        self.excel_parser.apply_excel_template(self.qa_sheet_name, ["Title"] + qa_identifiers + ["Total Score"])
         de_identifiers = [de["key"] for de in self.data_extraction_fields]
         self.excel_parser.apply_excel_template(self.de_sheet_name, de_identifiers)
 
-        # Initialize Ollama manager
-        if not self.initiate_ollama_manager():
-            logger.error("Failed to initialize Ollama connection. Exiting.")
-            return False
+        # Initialize handler
+        handler = None
+        if self.use_handler:
+            try:
+                handler = ChatGPTInteractionManager()
+                handler.launch_chatpgt_page()
+                handler.login()
+                logger.info("ChatGPT handler initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize ChatGPT handler: {e}")
+                return False
+        else:
+            if not self.initiate_ollama_manager():
+                logger.error("Failed to initialize Ollama connection. Exiting.")
+                return False
 
         # Number of questions made
         num_question = 0
@@ -428,16 +443,21 @@ class PDFToExcelProcessor:
         response_log_file = os.path.join(self.pdf_folder_path, "llm_responses.log")
         with open(response_log_file, 'w', encoding='utf-8') as log_file:
             log_file.write(f"=== LLM Response Log - Started at {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n\n")
-            log_file.write(f"Using model: {self.ollama_manager.model}\n")
-            log_file.write(f"GPU acceleration: {'enabled' if self.use_gpu else 'disabled'}\n")
-            log_file.write(f"Content truncation: {'disabled' if self.ollama_manager.max_content_length is None else 'enabled'}\n\n")
+            if self.use_handler:
+                log_file.write(f"Using ChatGPT web interface\n")
+            else:
+                log_file.write(f"Using Ollama model: {self.ollama_manager.model}\n")
+                log_file.write(f"GPU acceleration: {'enabled' if self.use_gpu else 'disabled'}\n")
         
-        logger.info(f"Created LLM response log file at: {response_log_file}")
+        logger.info(f"Created LLM response Log file at: {response_log_file}")
         
         for pdf_path in self.get_pdf_paths():
             if pdf_path.lower().endswith(".pdf"):
                 if num_question == self.max_questions:
-                    self.ollama_manager.new_conversation()
+                    if self.use_handler:
+                        handler.new_chat()
+                    else:
+                        self.ollama_manager.new_conversation()
                     num_question = 0
                 
                 try:
@@ -446,8 +466,45 @@ class PDFToExcelProcessor:
                     # Get the analysis prompt
                     prompt = self.review_parser.get_analysis_prompt()
                     
+                    # Log prompt for debugging
+                    debug_dir = os.path.join(os.path.dirname(pdf_path), "debug_logs")
+                    os.makedirs(debug_dir, exist_ok=True)
+                    
+                    pdf_filename = os.path.basename(pdf_path)
+                    prompt_debug_filename = os.path.join(debug_dir, f"{os.path.splitext(pdf_filename)[0]}_prompt.txt")
+                    
+                    with open(prompt_debug_filename, 'w', encoding='utf-8') as f:
+                        f.write(prompt)
+                    
+                    logger.info(f"Saved prompt to {prompt_debug_filename}")
+                    
                     # Send PDF and prompt for analysis
-                    response = self.send_pdf_to_analysis(pdf_path, prompt)
+                    response = None
+                    if self.use_handler:
+                        try:
+                            # First upload the PDF
+                            logger.info(f"Uploading PDF file to ChatGPT: {pdf_path}")
+                            if not handler.input_external_file(pdf_path):
+                                logger.error(f"Failed to upload PDF file: {pdf_path}")
+                                continue
+                                
+                            # Wait for the file to be processed
+                            time.sleep(5)
+                            
+                            # Now send the prompt as a separate message
+                            logger.info(f"Sending analysis prompt (length: {len(prompt)})")
+                            response = handler.send_and_receive(prompt)
+                            
+                            if not response:
+                                logger.error("No response received from ChatGPT")
+                                continue
+                                
+                        except Exception as e:
+                            logger.error(f"Error processing with ChatGPT: {e}")
+                            continue
+                    else:
+                        response = self.send_pdf_to_analysis(pdf_path, prompt)
+
                     num_question += 1
                     
                     # Write the response to the consolidated log file
@@ -462,15 +519,42 @@ class PDFToExcelProcessor:
                         else:
                             log_file.write("*** NO RESPONSE RECEIVED ***")
                     
+                    # Save the full response to a separate file for debugging
+                    if response:
+                        response_filename = os.path.join(debug_dir, f"{os.path.splitext(pdf_filename)[0]}_response.txt")
+                        with open(response_filename, 'w', encoding='utf-8') as f:
+                            f.write(response)
+                        logger.info(f"Saved full response to {response_filename}")
+                    
                     if not response:
                         logger.warning(f"No response for file: {pdf_path}")
                         continue
+                    
+                    # IMPORTANT: First extract the DE data to get the title
+                    de_data = self.review_parser.get_data_extraction_text(response)
+                    
+                    # Try to get the title - first check for different key variations
+                    paper_title = None
+                    for title_key in ["TITLE", "Title", "title"]:
+                        if title_key in de_data:
+                            paper_title = de_data[title_key]
+                            logger.info(f"Found title: {paper_title}")
+                            break
+                    
+                    # If no title found, use the PDF filename as a fallback
+                    if not paper_title:
+                        paper_title = os.path.splitext(os.path.basename(pdf_path))[0]
+                        logger.warning(f"No title found in data extraction, using filename: {paper_title}")
                     
                     # Extract QA data and calculate average score
                     qa_data = self.review_parser.get_quality_assessment_text(response)
                     paper_score = qa_data.pop("Total Score", 0)  # Extract average score for logging
                     
+                    # Add title to QA data
+                    qa_data["Title"] = paper_title
+                    
                     if qa_data:
+                        # Add the QA data with title and score to the Excel sheet
                         self.excel_parser.fill_excel_with_data(self.qa_sheet_name, {**qa_data, "Total Score": paper_score})
                         logger.info(f"Total QA Score: {paper_score}")
                     else:
@@ -480,7 +564,9 @@ class PDFToExcelProcessor:
                     check_e_question = 0
                     for e_question in self.excluding_questions:
                         if qa_data.get(f"{e_question} Score", 1) == 0:  # Default to 1 if key not found
-                            print(f"Paper does not match the score needed for excluding question: {e_question}")
+
+                            logger.info(f"Paper does not match the score needed for excluding question: {e_question}")
+
                             self.move_rejected_file(pdf_path)
                             check_e_question += 1
                     
@@ -490,8 +576,12 @@ class PDFToExcelProcessor:
                     # Extract and write DE data only if the score meets the cutoff
                     if paper_score and paper_score >= self.cutoff_score:
                         logger.info(f"Paper score ({paper_score}) meets the cutoff ({self.cutoff_score}). Extracting DE data...")
-                        de_data = self.review_parser.get_data_extraction_text(response)
+
                         if de_data:
+                            # Make sure the title in DE data matches what we used in QA data
+                            if "TITLE" in de_data and paper_title:
+                                de_data["TITLE"] = paper_title
+                                
                             self.excel_parser.fill_excel_with_data(self.de_sheet_name, de_data)
                         else:
                             logger.warning(f"No DE data found for file: {pdf_path}")
@@ -508,8 +598,17 @@ class PDFToExcelProcessor:
                     
                 except Exception as e:
                     logger.error(f"Error processing file '{pdf_path}': {e}")
+                    
             else:
                 logger.info(f"Skipping non-PDF file: {pdf_path}")
         
-        logger.info("Completed PDF processing with Ollama LLM.")
+        # Close the browser when done
+        if self.use_handler and handler:
+            try:
+                handler.driver.close_connection()
+                logger.info("Closed ChatGPT browser session")
+            except Exception as e:
+                logger.warning(f"Error closing browser: {e}")
+                
+        logger.info("Completed PDF processing")
         return True
