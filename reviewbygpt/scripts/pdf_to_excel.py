@@ -564,7 +564,9 @@ class PDFToExcelProcessor:
                     check_e_question = 0
                     for e_question in self.excluding_questions:
                         if qa_data.get(f"{e_question} Score", 1) == 0:  # Default to 1 if key not found
+
                             logger.info(f"Paper does not match the score needed for excluding question: {e_question}")
+
                             self.move_rejected_file(pdf_path)
                             check_e_question += 1
                     
@@ -574,6 +576,7 @@ class PDFToExcelProcessor:
                     # Extract and write DE data only if the score meets the cutoff
                     if paper_score and paper_score >= self.cutoff_score:
                         logger.info(f"Paper score ({paper_score}) meets the cutoff ({self.cutoff_score}). Extracting DE data...")
+
                         if de_data:
                             # Make sure the title in DE data matches what we used in QA data
                             if "TITLE" in de_data and paper_title:
