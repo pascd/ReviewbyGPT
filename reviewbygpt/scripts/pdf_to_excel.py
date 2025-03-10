@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class OllamaInteractionManager:
     """Class to manage interactions with Ollama API"""
     
-    def __init__(self, base_url="http://localhost:11434", model="mistral:latest", use_gpu=True, max_content_length=None):
+    def __init__(self, base_url="http://localhost:11434", model="qwq:latest", use_gpu=True, max_content_length=None):
         self.base_url = base_url
         self.model = model
         self.use_gpu = use_gpu
@@ -261,7 +261,7 @@ class OllamaInteractionManager:
 
 class PDFToExcelProcessor:
     def __init__(self, pdf_folder_path, review_config, qa_sheet_name, de_sheet_name, max_questions, 
-                 ollama_url="http://localhost:11434", ollama_model="mistral:latest", 
+                 ollama_url="http://localhost:11434", ollama_model="qwq:latest", 
                  use_gpu=True, max_content_length=None):
         self.pdf_folder_path = pdf_folder_path
         

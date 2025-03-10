@@ -1,98 +1,54 @@
-# ReviewbyGPT
+# 🚀 ReviewbyGPT
 
----
+ReviewbyGPT is a powerful tool designed to assist researchers in reviewing PDF papers and filling out Excel sheets with relevant information. This package leverages AI to provide insightful reviews and streamline the data extraction process.
 
-<a rel="license" href="http://creativecommons.org/licenses/by-nc-nd/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png" />
+## ✨ Features
 
-Welcome to WebGPTHandler, a Python handler for interacting with online GPT chats.
+- **🚀 Automated Paper Reviews**: Get instant feedback on your PDF papers.
+- **📊 Data Extraction**: Automatically extract key information from papers.
+- **📈 Excel Integration**: Fill out Excel sheets with extracted data.
+- **🔍 Error Detection**: Identify potential issues in your data extraction process.
 
-Author: Pedro Afonso Dias
+## 📥 Installation
 
-### <a name="Description"></a>1. Index
-
----
-
-* [Description](#Description)
-* [Prerequisites](#Prerequisites)
-* [Installation](#Installation)
-* [Usage](#Usage)
-
-### <a name="Description"></a>2. Description
-
----
-
-WebGPTHandler is a Python package that automates interactions with online GPT chat interfaces using Selenium. It provides an easy-to-use interface for automating browser actions such as sending messages, handling user sessions, and retrieving chat responses.
-### <a name="Prerequisites"></a>3. Prerequisites
-
----
-
-This package has been tested on:
-
-- Operating System: Ubuntu 24.04
-- Python Version: 3.12+
-- Browser Compatibility: Google Chrome with ChromeDriver
-
-**Dependencies**:
-
-Ensure the following are installed before using this package:
-
-- Python 3.12+
-- Google Chrome
-- ChromeDriver
-
-Install required Python dependencies:
-
-```pip install selenium undetected-chromedriver fake-useragent```
-
-### <a name="Installation"></a>4. Installation
-
----
-
-1. Setup all prerequisites.
-2. Clone the [WebGPTHandler](/) repository to a specified directory:
+To install ReviewbyGPT, use the following command:
 
 ```bash
-git clone https://github.com/pascd/WebGPTHandler.git
-```
-3. Install the package and its dependencies:
-
-```bash
-pip install .
+pip install reviewbygpt
 ```
 
-### <a name="Usage"></a>5. Usage
+## 🛠️ Usage
 
-#### <a name="example_case"></a>Example case
+Here's a basic example of how to use ReviewbyGPT:
 
----
-
-Here is a simple example on how to use the GPT interaction manager:
-
- ```python
- import sys
+```python
+import sys
 import os
+import time
 
 # Dynamically add the root directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from src import ChatGPTInteractionManager
+from reviewbygpt.scripts.pdf_to_excel import PDFToExcelProcessor
 
 if __name__ == "__main__":
 
-    chatgpt_handler = ChatGPTInteractionManager()
+    pdf_to_excel_processor = PDFToExcelProcessor(pdf_folder_path="./pdf-files/",
+                                                 qa_sheet_name="qa_sheet",
+                                                 de_sheet_name="de_sheet",
+                                                 review_config="./review_data.yaml")
 
-    chatgpt_handler.launch_chatpgt_page()
+    pdf_to_excel_processor.run()
+```
 
-    chatgpt_handler.login()
+## 🤝 Contributing
 
-    while True:
-        response = chatgpt_handler.send_and_receive(message=input("Prompt: "))
-        print(response)
- ```
+We welcome contributions! Please read our [contributing guidelines](CONTRIBUTING.md) for more details.
 
-This example allows the establishment of a conversation with any GPT in specific with the ChatGPT, through CLI.
+## 📄 License
 
-For other examples and GPT chats, may find some content in the [examples](examples) folder of this repository.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
 
------------------------------------------------------------------------------------------------------------------
-<br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-nd/4.0/">Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License</a>.
+## 📧 Contact
+
+For any questions or feedback, please contact me at pedro.afonso.cardoso.dias@gmail.com
