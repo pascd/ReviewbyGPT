@@ -415,8 +415,12 @@ class PDFToExcelProcessor:
         
         # Initialize the Excel sheets
         self.excel_parser.create_excel_file()
-        qa_identifiers = [qa["id"] for qa in self.qa_fields]
-        self.excel_parser.apply_excel_template(self.qa_sheet_name, ["Title"] + qa_identifiers + ["Total Score"])
+        qa_identifiers = []
+        for qa in self.qa_fields:
+            qa_identifiers.append(f"{qa["id"]}")
+            qa_identifiers.append(f"{qa["id"]}_SCORE")
+
+        self.excel_parser.apply_excel_template(self.qa_sheet_name, ["TITLE"] + qa_identifiers + ["TOTAL_SCORE"])
         de_identifiers = [de["key"] for de in self.data_extraction_fields]
         self.excel_parser.apply_excel_template(self.de_sheet_name, de_identifiers)
 
@@ -564,9 +568,7 @@ class PDFToExcelProcessor:
                     check_e_question = 0
                     for e_question in self.excluding_questions:
                         if qa_data.get(f"{e_question} Score", 1) == 0:  # Default to 1 if key not found
-
                             logger.info(f"Paper does not match the score needed for excluding question: {e_question}")
-
                             self.move_rejected_file(pdf_path)
                             check_e_question += 1
                     
@@ -576,7 +578,6 @@ class PDFToExcelProcessor:
                     # Extract and write DE data only if the score meets the cutoff
                     if paper_score and paper_score >= self.cutoff_score:
                         logger.info(f"Paper score ({paper_score}) meets the cutoff ({self.cutoff_score}). Extracting DE data...")
-
                         if de_data:
                             # Make sure the title in DE data matches what we used in QA data
                             if "TITLE" in de_data and paper_title:

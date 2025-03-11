@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 
 # Dynamically add the root directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -15,4 +16,8 @@ if __name__ == "__main__":
     chatgpt_handler.login()
 
     while True:
-        chatgpt_handler.send_and_receive(message=input("Prompt: "))
+        response = chatgpt_handler.send_and_receive(message=input("Prompt: "))
+        print(response)
+
+        time.sleep(2)
+        chatgpt_handler.new_chat()
