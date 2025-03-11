@@ -415,8 +415,12 @@ class PDFToExcelProcessor:
         
         # Initialize the Excel sheets
         self.excel_parser.create_excel_file()
-        qa_identifiers = [qa["id"] for qa in self.qa_fields]
-        self.excel_parser.apply_excel_template(self.qa_sheet_name, ["Title"] + qa_identifiers + ["Total Score"])
+        qa_identifiers = []
+        for qa in self.qa_fields:
+            qa_identifiers.append(f"{qa["id"]}")
+            qa_identifiers.append(f"{qa["id"]}_SCORE")
+
+        self.excel_parser.apply_excel_template(self.qa_sheet_name, ["TITLE"] + qa_identifiers + ["TOTAL_SCORE"])
         de_identifiers = [de["key"] for de in self.data_extraction_fields]
         self.excel_parser.apply_excel_template(self.de_sheet_name, de_identifiers)
 

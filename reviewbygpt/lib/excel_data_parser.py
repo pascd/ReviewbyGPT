@@ -128,8 +128,8 @@ class ExcelDataParser:
             is_qa_sheet = any(identifier.startswith("QE") for identifier in identifiers)
             
             # For QA sheet, make sure 'Title' is included in the identifiers
-            if is_qa_sheet and "Title" not in identifiers:
-                identifiers = ["Title"] + identifiers
+            if is_qa_sheet and "TITLE" not in identifiers:
+                identifiers = ["TITLE"] + identifiers
                 logger.info("Added 'Title' field to QA sheet identifiers")
             
             # Apply the headers if the sheet is empty or force update
