@@ -111,6 +111,7 @@ class ReviewDataParser:
         prompt += "5. Do not add any additional formatting, bullets, or markdown\n"
         prompt += "6. Each item should be on its own line\n"
         prompt += "7. You should respect the line breaks here and replicate them if they exist\n"
+        prompt += "8. In Quality Assesment scores, the higher the score, the best its fit to the question\n"
         
         return prompt
 

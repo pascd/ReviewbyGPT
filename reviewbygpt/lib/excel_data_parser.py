@@ -2,6 +2,7 @@ import os
 import logging
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from reviewbygpt.lib.review_data_parser import ReviewDataParser
 import shutil
 
 # Configure logging
@@ -9,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class ExcelDataParser:
-    def __init__(self, excel_file_path):
+    def __init__(self, excel_file_path, review_config):
         """
         Initialize the Excel data parser with proper path handling
         """
@@ -21,6 +22,9 @@ class ExcelDataParser:
         
         # Create the full path to the Excel file
         self.full_excel_path = os.path.join(self.excel_dir, self.excel_filename)
+
+        # Review config
+        self.review_parser = ReviewDataParser(review_config)
         
         logger.info(f"Excel parser initialized with file: {self.full_excel_path}")
 
@@ -182,8 +186,9 @@ class ExcelDataParser:
                 # We need to initialize the headers too
                 if sheet_name == "qa_sheet":
                     # Create headers for QA sheet
-                    # In apply_excel_template method, change:
-                    qa_headers = ["Title"] + [f"QE{i}" for i in range(1, 9)] + [f"QE{i}_SCORE" for i in range(1, 9)] + ["TOTAL_SCORE"]
+                    num_questions = len(self.review_parser.get_all_quality_assessment_fields["id"])
+                    logger.info(f"Found {num_questions} in the review config.")
+                    qa_headers = ["Title"] + [f"QE{i}" for i in range(1, num_questions)] + [f"QE{i}_SCORE" for i in range(1, num_questions)] + ["TOTAL_SCORE"]
                     self.apply_excel_template(sheet_name, qa_headers)
                     # Reload the workbook
                     wb = load_workbook(self.full_excel_path)

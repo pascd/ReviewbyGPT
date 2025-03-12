@@ -287,7 +287,7 @@ class PDFToExcelProcessor:
         )
         
         self.response_handler = ResponseHandler()
-        self.excel_parser = ExcelDataParser(self.excel_file_path)
+        self.excel_parser = ExcelDataParser(self.excel_file_path, review_config=review_config)
         self.review_parser = ReviewDataParser(review_config)
         self.folder_names = ["accepted", "rejected", "sheet"]
         self.max_questions = max_questions
@@ -552,14 +552,14 @@ class PDFToExcelProcessor:
                     
                     # Extract QA data and calculate average score
                     qa_data = self.review_parser.get_quality_assessment_text(response)
-                    paper_score = qa_data.pop("Total Score", 0)  # Extract average score for logging
+                    paper_score = qa_data.pop("TOTAL_SCORE", 0)  # Extract average score for logging
                     
                     # Add title to QA data
-                    qa_data["Title"] = paper_title
+                    qa_data["TITLE"] = paper_title
                     
                     if qa_data:
                         # Add the QA data with title and score to the Excel sheet
-                        self.excel_parser.fill_excel_with_data(self.qa_sheet_name, {**qa_data, "Total Score": paper_score})
+                        self.excel_parser.fill_excel_with_data(self.qa_sheet_name, {**qa_data, "TOTAL_SCORE": paper_score})
                         logger.info(f"Total QA Score: {paper_score}")
                     else:
                         logger.warning(f"No QA data found for file: {pdf_path}")
@@ -567,7 +567,7 @@ class PDFToExcelProcessor:
                     # Check if any of the excluding questions have a score equal to "0"
                     check_e_question = 0
                     for e_question in self.excluding_questions:
-                        if qa_data.get(f"{e_question} Score", 1) == 0:  # Default to 1 if key not found
+                        if qa_data.get(f"{e_question}_SCORE", 0) == 0:  # Default to 1 if key not found
                             logger.info(f"Paper does not match the score needed for excluding question: {e_question}")
                             self.move_rejected_file(pdf_path)
                             check_e_question += 1

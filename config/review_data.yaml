@@ -1,15 +1,15 @@
 quality_assessment_questions:
   - id: QE1
-    question: Is the methodology appropriate and adequately tailored to the specific challenges of disassembly tasks?
+    question: Is the methodology appropriate and adequately tailored to the specific challenges of disassembly tasks, and properly validated?
     scores: [0.0, 0.5, 1.0]
   - id: QE2
-    question: Is the proposed robotic cell or solution described in sufficient detail to understand its functionality and application?
+    question: Is the proposed robotic cell or solution described in sufficient detail to understand its design, operation, and applicability?
     scores: [0.0, 1.0, 2.0]
   - id: QE3
     question: Are the discussions of the results and conclusions thorough and well-supported by the data presented?
     scores: [0.0, 0.5, 1.0]
   - id: QE4
-    question: What type of research is conducted in the work (experimental, simulation, conceptual), and is this clearly stated?
+    question: Is the type of research clearly specified (e.g., experimental, simulation-based, conceptual) and appropriately framed within the studys objectives?
     scores: [0.0, 0.5, 1.0]
   - id: QE5
     question: Does the work’s implementation and/or the data used in the experiments are publicly available?
@@ -21,7 +21,7 @@ quality_assessment_questions:
     question: Does the paper present comparative results with other methods or ground-truth data to validate its findings?
     scores: [0.0, 1.0]
   - id: QE8
-    question: Does the paper provide an updated review of the state of the art in the process described for disassembly tasks?
+    question: Does the paper provide an updated review of the state of the art of the process described in the paper, in the context of disassembly?
     scores: [0.0, 0.5, 1.0]
 
 cutoff_score: 6.5
@@ -44,26 +44,30 @@ data_extraction_fields:
   - key: DOF OF MANIPULATOR
     description: Degrees of freedom of the manipulator used.
   - key: HARDWARE CELL COMPONENTS
-    description: Components that compose the hardware of the automated cell.
+    description: Key components of the physical robotic cell (e.g., sensors, grippers, actuators).
   - key: SOFTWARE ARCHITECTURE COMPONENTS
-    description: Algorithms that compose the software architeture of the automated cell.
+    description: Software frameworks, control algorithms, and architectures used.
   - key: VISION SYSTEM
-    description: Details about the vision system used
+    description: Details of the vision system (e.g., cameras, LiDAR, image processing techniques).
   - key: USE OF CAD MODEL
-    description: Was a CAD model used for planning, simulation, or real-time guidance?.
+    description: Was a CAD model utilized for planning, simulation, or real-time decision-making?
   - key: LEVEL OF IMPLEMENTATION
-    description: Specify Technology Readiness Levels (TRL) if available or if not if it is Conceptual/Experimental/Implemented.
+    description: Technology Readiness Level (TRL) if specified; otherwise, categorize as Conceptual / Experimental / Implemented.
   - key: LEVEL OF AUTOMATION
-    description: Collaborative Cell/Fully automated/Manual.
+    description: Define whether the system is Collaborative (Human-Robot Interaction) / Fully Automated / Manual.
   - key: PROCESS STEPS
-    description: Type of disassembly steps performed.
+    description: Specific disassembly operations performed (e.g., unscrewing, cutting, detaching).
+  - key: ERROR RECOVERY MECHANISMS 
+    description: Does the system handle failures, such as part misalignment or unexpected obstructions?
+  - key: REAL-TIME FEEDBACK & CONTROL 
+    description: Is there any mechanism for real-time monitoring and adjustment?
   - key: EFFICIENCY CONSIDERATIONS
-    description: Cost/Time/Energy.
+    description: Factors considered in the study regarding Cost, Time, Energy Consumption.
   - key: OPTIMIZATION OF DISASSEMBLY TASKS
-    description: Does the study focus on optimizing any disassembly step or task?
+    description: Does the study address optimization in terms of speed, efficiency, or accuracy?
   - key: CHALLENGES
-    description: Key challenges addressed in the paper.
+    description: Key technical and operational challenges tackled in the study.
   - key: HOW TO
-    description: How the authors achieved their goals.
+    description: Explanation of how the authors achieved their goals, including techniques, strategies, and methodologies.
   - key: RESULTS
-    description: Key findings, performance metrics, and conclusions of the study.
+    description: Key findings, performance metrics, and conclusions drawn from the study.

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     review_parser = ReviewDataParser(config="/home/pedrodias/Documents/git-repos/ReviewbyGPT/config/review_data.yaml")
-    excel_parser = ExcelDataParser(excel_file_path="/home/pedrodias/Documents/git-repos/ReviewbyGPT/config/")
+    excel_parser = ExcelDataParser(excel_file_path="/home/pedrodias/Documents/git-repos/ReviewbyGPT/config/", review_config="/home/pedrodias/Documents/git-repos/ReviewbyGPT/config/review_data.yaml")
 
     response = """
     ==QUALITY_ASSESSMENT_START== QE1: The methodology focuses on a hybrid disassembly line balancing problem using an improved tabu search algorithm. The approach is well-structured for addressing multi-robot task allocation and optimization. However, while the algorithm is well detailed, it lacks specific discussion on the physical challenges of disassembly tasks, such as force dynamics and uncertainties in real-world robotic disassembly. QE1_SCORE: 0.5
