@@ -1,4 +1,4 @@
-# 🚀 ReviewbyGPT
+# ReviewbyGPT
 
 ReviewbyGPT automates the tedious part of a literature review: for every PDF in a folder, it
 extracts the text, sends it to an LLM along with a set of quality-assessment questions and
@@ -7,20 +7,20 @@ Excel workbook — sorting each paper into `analysed/` or `rejected/` based on a
 configure. No browser automation, no vendor lock-in: it talks to any LLM that exposes an
 OpenAI-compatible chat API.
 
-## ✨ Features
+## Features
 
-- **📄 Automatic PDF review**: extracts text and sends it, with your review questions, to an LLM.
-- **🔌 Works with any OpenAI-compatible backend**: OpenAI, a local [Ollama](https://ollama.com)
+- **Automatic PDF review**: extracts text and sends it, with your review questions, to an LLM.
+- **Works with any OpenAI-compatible backend**: OpenAI, a local [Ollama](https://ollama.com)
   server, [LM Studio](https://lmstudio.ai), vLLM, text-generation-webui, or anything else that
   speaks the `/v1/chat/completions` protocol — just point `--api-url` at it.
-- **📊 Structured Excel output**: quality-assessment scores and extracted data fields are written
+- **Structured Excel output**: quality-assessment scores and extracted data fields are written
   to separate sheets, styled and ready to skim.
-- **✅ Configurable accept/reject logic**: a cutoff score plus "excluding questions" (any one of
+- **Configurable accept/reject logic**: a cutoff score plus "excluding questions" (any one of
   which scoring 0 rejects the paper outright) automatically sort PDFs into `analysed/`/`rejected/`.
-- **🧾 Full audit trail**: every prompt sent and response received is saved under `debug_logs/`,
+- **Full audit trail**: every prompt sent and response received is saved under `debug_logs/`,
   plus a single running `llm_responses.log`, so you can see exactly what the LLM was asked and said.
 
-## 📥 Installation
+## Installation
 
 ```bash
 git clone https://github.com/pascd/ReviewbyGPT.git
@@ -31,7 +31,7 @@ pip install -e .
 Requires Python 3.9+. This installs a `reviewbygpt` console command as well as the
 `reviewbygpt` Python package.
 
-## 🛠️ Usage
+## Usage
 
 ### Command line
 
@@ -64,7 +64,7 @@ processor = PDFToExcelProcessor(
 processor.run()
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### Review schema (`review_data.yaml`)
 
@@ -114,7 +114,7 @@ real value into `llm_api_config.json` for anything that requires an API key.
 `https://api.openai.com/v1/chat/completions`, `LLM_MODEL` to a model you have access to, and
 `LLM_API_KEY` to your API key.
 
-## 📂 Output layout
+## Output layout
 
 Inside `--pdf-folder`, ReviewbyGPT creates:
 
@@ -124,22 +124,22 @@ Inside `--pdf-folder`, ReviewbyGPT creates:
 - `debug_logs/` — per-PDF prompt/extracted-text/response `.txt` files.
 - `llm_responses.log` — a single running log of every response, in order.
 
-## 🩺 Troubleshooting
+## Troubleshooting
 
 Running a local Ollama backend and hitting GPU/CUDA issues? `reviewbygpt/scripts/ollama_diagnose.sh`
 and `reviewbygpt/scripts/intall_cuda.sh` are optional helper scripts for diagnosing and setting up
 GPU-accelerated Ollama inference. They're unrelated to ReviewbyGPT itself — useful only if you've
 chosen to self-host via Ollama.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and our
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
-## 📧 Contact
+## Contact
 
 Questions or feedback: pedro.afonso.cardoso.dias@gmail.com

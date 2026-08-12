@@ -2,6 +2,45 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "reviewbygpt"
+version = "0.1.0"
+description = "Automate literature-review quality assessment and data extraction from PDFs into Excel, using any OpenAI-compatible LLM backend."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Pedro Dias", email = "pedro.afonso.cardoso.dias@gmail.com" }]
+requires-python = ">=3.9"
+dependencies = [
+    "PyPDF2",
+    "PyYAML",
+    "requests",
+    "openpyxl",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: General",
+]
+
+[project.urls]
+Repository = "https://github.com/pascd/ReviewbyGPT"
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+reviewbygpt = "reviewbygpt.scripts.main:main"
+
+[tool.setuptools.packages.find]
+exclude = ["tests", "tests.*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
