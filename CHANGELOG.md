@@ -15,7 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `python -m reviewbygpt.scripts.main --help`).
 - A real `pytest` test suite covering response parsing, Excel writing, and
   the LLM client (with `requests` mocked, so no live backend is needed).
-- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and this changelog.
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CITATION.cff`,
+  and this changelog.
+- A Mermaid architecture diagram and expanded, structured `README.md`
+  (project status, tech stack, dependency table, known issues, community
+  standards, credits).
 
 ### Changed
 - Consolidated three separate, inconsistent LLM code paths (a browser
@@ -23,8 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   client) into a single, well-documented, generic HTTP client.
 - Rewrote `README.md` to accurately describe installation, CLI usage, the
   programmatic API, and configuration.
-- Cleaned up `requirements.txt`/`setup.py` to list only the packages the
-  code actually imports, and added a minimal `pyproject.toml`.
+- Cleaned up `requirements.txt` to list only the packages the code
+  actually imports, and consolidated all packaging metadata into
+  `pyproject.toml` (removing the now-redundant `setup.py`).
 - Fixed two silent scoring bugs in `PDFToExcelProcessor` where a
   mismatched dictionary key meant the total score and excluding-question
   checks never actually matched the data they were checking against.

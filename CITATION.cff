@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "ReviewbyGPT"
+version: "0.1.0"
+date-released: "2026-08-12"
+license: "MIT"
+repository-code: "https://github.com/pascd/ReviewbyGPT"
+abstract: >-
+  A Python CLI and library that automates literature-review quality assessment and data extraction
+  from PDFs into an Excel report, using any OpenAI-compatible LLM backend.
+authors:
+  - family-names: "Dias"
+    given-names: "Pedro A."
+    email: "pedro.afonso.cardoso.dias@gmail.com"

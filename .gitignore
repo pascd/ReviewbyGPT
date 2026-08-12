@@ -30,3 +30,4 @@ debug_logs/
 llm_responses.log
 *.xlsx.bak
 *.xlsx.corrupted
+*.claude
