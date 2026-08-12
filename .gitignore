@@ -1,83 +1,32 @@
-#vim swap files
-*.swp
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
 
-#vim session files
-.vimsession/
-
-# Compiled Object files
-*.slo
-*.lo
-*.o
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-
-# ctaqgs tag files
-*.localtags
-
-#vim swap files
-*.swp
-
-#vim session files
-.vimsession/
-
-#kdev project files
-*.kdev4
-
-#ogv movie files
-*.ogv
-
-#gedit and kwrite files that end with ~
-*~
-
-#some ros packages directories
-bin/
+# Packaging / build artifacts
+*.egg-info/
+dist/
 build/
-msg_gen/
-srv_gen/
-#**/src/*/
 
-##ignore ros java
-**/.gradle/
-*.bin
+# Virtual environments
+.venv/
+venv/
 
-#ignore log files someone is creating
-*.log
-*.gz
+# Environment variables (never commit real API keys/secrets)
+.env
 
-#ignore latex temp files
-*.aux
-*.bbl
-*.blg
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
 
-#ignore latex beamer temp files
-*.nav
-*.out
-*.snm
-*.toc
-*.vrb
-
-#ignore octrees
-*.ot
-*.bt
-
-#ignore point clouds
-*.pcd
-
-#ignore Python Compiled Code
-*.pyc
-
-#ignore pdfs
-#*.pdf
-
+# Editors
 .idea/
 .vscode/
-.cmake-build-debug/
-__pycache__/
-*.egg-info
+*.swp
+*~
+
+# Runtime artifacts produced by PDFToExcelProcessor.run()
+debug_logs/
+llm_responses.log
+*.xlsx.bak
+*.xlsx.corrupted

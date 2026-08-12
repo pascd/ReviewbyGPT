@@ -1,6 +1,9 @@
-[
-    {
-        "llm_config":
-            "api_url": "http://127.0.0.1:8000/v1/chat/completions"
-    }
-]
+{
+    "api_url": "http://localhost:11434/v1/chat/completions",
+    "api_key": "",
+    "model": "gemma2:latest",
+    "temperature": 0.1,
+    "max_tokens": 1024,
+    "timeout": 600,
+    "max_content_length": null
+}

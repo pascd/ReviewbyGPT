@@ -1,273 +1,91 @@
-import os
-import time
-import pandas as pd
+"""Core pipeline: turn a folder of PDFs into a scored, filled-in Excel report.
+
+:class:`PDFToExcelProcessor` is the main entry point of ReviewbyGPT. For each
+PDF found in a folder, it:
+
+1. Extracts the PDF's text and sends it, together with a prompt built from
+   ``config/review_data.yaml``, to an LLM via :class:`~reviewbygpt.lib.
+   llm_client.LLMClient` (any OpenAI-chat-completions-compatible backend).
+2. Parses the quality-assessment (QA) scores and data-extraction (DE) fields
+   out of the LLM's response via :class:`~reviewbygpt.lib.review_data_parser.
+   ReviewDataParser`.
+3. Writes the QA/DE results into an Excel workbook via
+   :class:`~reviewbygpt.lib.excel_data_parser.ExcelDataParser`.
+4. Moves the PDF into an ``analysed/`` or ``rejected/`` subfolder depending
+   on whether its score meets the configured cutoff and excluding-question
+   rules.
+"""
+
 import logging
-import shutil
+import os
 import random
-import requests
-import json
+import shutil
+import time
 from pathlib import Path
-import PyPDF2
-import base64
-import subprocess
+from typing import Optional
 
 from reviewbygpt.lib.excel_data_parser import ExcelDataParser
-from reviewbygpt.lib.response_handler import ResponseHandler
+from reviewbygpt.lib.llm_client import LLMClient
 from reviewbygpt.lib.review_data_parser import ReviewDataParser
 
-from webgpthandler.scripts.chatgpt_interaction_manager import ChatGPTInteractionManager
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-class OllamaInteractionManager:
-    """Class to manage interactions with Ollama API"""
-    
-    def __init__(self, base_url="http://localhost:11434", model="gemma2:latest", use_gpu=True, max_content_length=None):
-        self.base_url = base_url
-        self.model = model
-        self.use_gpu = use_gpu
-        self.max_content_length = max_content_length  # Set to None for no truncation
-        self.api_endpoint = f"{self.base_url}/api/generate"
-        logger.info(f"Initialized Ollama interaction manager with model: {model} (GPU: {'enabled' if use_gpu else 'disabled'})")
-        logger.info(f"PDF content truncation: {'disabled' if max_content_length is None else f'limited to {max_content_length} chars'}")
-        
-        # Check if CUDA is available when GPU is requested
-        if use_gpu:
-            self._check_cuda_availability()
-            
-        # Check installed Ollama version
-        try:
-            import subprocess
-            result = subprocess.run(["ollama", "--version"], capture_output=True, text=True)
-            if result.returncode == 0:
-                logger.info(f"Ollama version: {result.stdout.strip()}")
-            else:
-                logger.warning("Unable to determine Ollama version")
-        except Exception as e:
-            logger.warning(f"Error checking Ollama version: {e}")
-            
-    def _check_cuda_availability(self):
-        """Check if CUDA is available for GPU inference"""
-        try:
-            # Check if the CUDA libraries are available
-            result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
-            cuda_libs = [line for line in result.stdout.split('\n') if 'libcudart.so' in line]
-            
-            if cuda_libs:
-                logger.info(f"CUDA libraries found: {cuda_libs}")
-            else:
-                logger.warning("CUDA libraries not found in system paths. GPU acceleration may not work.")
-                logger.warning("Consider installing CUDA libraries: sudo apt install nvidia-cuda-toolkit")
-                
-            # Check if nvidia-smi command works
-            nvidia_result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
-            if nvidia_result.returncode == 0:
-                logger.info("NVIDIA GPU detected and working")
-                # Extract useful GPU info
-                gpu_info = nvidia_result.stdout.split('\n')
-                for line in gpu_info[:15]:  # Get just the important first few lines
-                    if line.strip():
-                        logger.info(f"GPU info: {line.strip()}")
-            else:
-                logger.warning("nvidia-smi command failed. NVIDIA drivers may not be properly installed.")
-                
-        except Exception as e:
-            logger.warning(f"Error checking CUDA availability: {e}")
-            
-    def verify_connection(self):
-        """Verify the connection to the Ollama API"""
-        try:
-            logger.info(f"Attempting to connect to Ollama API at {self.base_url}")
-            
-            # Detailed connection attempt with timeout
-            response = requests.get(f"{self.base_url}/api/tags", timeout=10)
-            
-            # Log full response for debugging
-            logger.info(f"Ollama API response status: {response.status_code}")
-            logger.info(f"Ollama API response: {response.text[:500]}...")  # Truncated for readability
-            
-            if response.status_code == 200:
-                available_models = response.json().get("models", [])
-                model_names = [model.get("name") for model in available_models]
-                
-                logger.info(f"Available models: {model_names}")
-                
-                if self.model in model_names:
-                    logger.info(f"Successfully connected to Ollama API. Model '{self.model}' is available.")
-                    return True
-                else:
-                    logger.error(f"Model '{self.model}' not found. Available models: {model_names}")
-                    # If model is not found but others are available, suggest them
-                    if model_names:
-                        logger.info(f"Consider using one of these available models instead: {model_names}")
-                    return False
-            else:
-                logger.error(f"Failed to connect to Ollama API. Status code: {response.status_code}")
-                return False
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection error: {e}")
-            logger.info("Ollama may not be running. Try starting it with 'ollama serve'")
-            return False
-        except requests.exceptions.Timeout as e:
-            logger.error(f"Connection timeout: {e}")
-            logger.info("The connection to Ollama timed out. Check if the service is overloaded.")
-            return False
-        except Exception as e:
-            logger.error(f"Error connecting to Ollama API: {e}")
-            return False
-    
-    def extract_text_from_pdf(self, pdf_path):
-        """Extract text content from a PDF file"""
-        try:
-            text = ""
-            with open(pdf_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                num_pages = len(pdf_reader.pages)
-                logger.info(f"Extracting text from PDF: {pdf_path} ({num_pages} pages)")
-                
-                for page_num in range(num_pages):
-                    page = pdf_reader.pages[page_num]
-                    page_text = page.extract_text()
-                    text += page_text
-                    
-                    # Log progress for large PDFs
-                    if num_pages > 10 and page_num % 5 == 0:
-                        logger.info(f"Extracted {page_num+1}/{num_pages} pages...")
-            
-            # Log info about extracted content
-            text_length = len(text)
-            logger.info(f"Successfully extracted {text_length} characters from PDF")
-            
-            # Log a sample of the content to verify extraction
-            sample_length = min(200, text_length)
-            logger.info(f"Sample of extracted text: {text[:sample_length]}...")
-            
-            return text
-        except Exception as e:
-            logger.error(f"Error extracting text from PDF '{pdf_path}': {e}")
-            return None
-    
-    def send_prompt(self, prompt, pdf_content=None):
-        """Send a prompt to the Ollama API and get the response"""
-        try:
-            # Combine PDF content with prompt if provided
-            if pdf_content:
-                # Only truncate if max_content_length is specified
-                if self.max_content_length and len(pdf_content) > self.max_content_length:
-                    logger.warning(f"PDF content length ({len(pdf_content)} chars) exceeds limit ({self.max_content_length}), truncating")
-                    pdf_content = pdf_content[:self.max_content_length] + "... [Content truncated due to length]"
-                else:
-                    logger.info(f"Using full PDF content ({len(pdf_content)} chars)")
-                
-                # Simplify prompt structure for better compatibility
-                full_prompt = f"PDF CONTENT:\n{pdf_content}\n\nTASK:\n{prompt}"
-            else:
-                full_prompt = prompt
-            
-            # Log payload size for debugging
-            prompt_size = len(full_prompt)
-            logger.info(f"Sending prompt to Ollama (size: {prompt_size} chars)")
-            
-            # Set GPU options based on configuration
-            gpu_options = {}
-            if not self.use_gpu:
-                gpu_options["num_gpu"] = 0  # Force CPU-only mode
-                logger.info("Using CPU-only mode for inference")
-            else:
-                # For GPU mode, we might want to specify all layers on GPU
-                gpu_options["num_gpu"] = 100  # Setting a high number ensures all compatible layers use GPU
-                logger.info("Using GPU acceleration for inference")
-            
-            # First try the chat API which often works better with longer contexts
-            try:
-                chat_endpoint = f"{self.base_url}/api/chat"
-                logger.info(f"Trying Ollama chat API at {chat_endpoint}")
-                
-                chat_payload = {
-                    "model": self.model,
-                    "messages": [
-                        {"role": "user", "content": full_prompt}
-                    ],
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.1,
-                        **gpu_options
-                    }
-                }
-                
-                # Log that we're sending the request
-                logger.info(f"Sending request to Ollama chat API with {'GPU' if self.use_gpu else 'CPU'} mode")
-                logger.info(f"Request timeout set to 600 seconds (10 minutes)")
-                
-                # Increased timeout for very large documents
-                response = requests.post(chat_endpoint, json=chat_payload, timeout=600)
-                
-                if response.status_code == 200:
-                    logger.info("Successfully received response from chat API")
-                    chat_response = response.json()
-                    return chat_response.get("message", {}).get("content", "")
-                else:
-                    logger.warning(f"Chat API failed with status {response.status_code}, falling back to generate API")
-            except Exception as e:
-                logger.warning(f"Error using chat API, falling back to generate API: {e}")
-            
-            # Fall back to the standard generate API
-            logger.info(f"Sending request to Ollama generate API at {self.api_endpoint}")
-            
-            # Use more compatible API parameters
-            payload = {
-                "model": self.model,
-                "prompt": full_prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                    "num_predict": 1024,  # Increased for more comprehensive responses
-                    **gpu_options
-                }
-            }
-            
-            response = requests.post(self.api_endpoint, json=payload, timeout=600)  # 10 minute timeout
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                response_text = response_data.get("response", "")
-                logger.info(f"Received response from Ollama (length: {len(response_text)} chars)")
-                return response_text
-            else:
-                logger.error(f"Error from Ollama API: {response.status_code} - {response.text}")
-                
-                # Provide specific troubleshooting advice based on error
-                if "exit status 127" in response.text:
-                    if "libcudart" in response.text:
-                        logger.error("CUDA libraries are missing. Try installing with: sudo apt install nvidia-cuda-toolkit")
-                        logger.error("Or switch to CPU-only mode by setting use_gpu=False")
-                    else:
-                        logger.error("Error 127 typically means the model executable wasn't found.")
-                        logger.error("Try pulling the model again with: ollama pull " + self.model)
-                return None
-        except requests.exceptions.Timeout:
-            logger.error("Request to Ollama API timed out. The model may be taking too long to process the PDF.")
-            return None
-        except Exception as e:
-            logger.error(f"Error sending prompt to Ollama API: {e}")
-            return None
-            
-    def new_conversation(self):
-        """Reset the conversation context by creating a new one"""
-        logger.info("Starting a new conversation with Ollama")
-        # No actual API call needed as Ollama doesn't maintain conversation state in this implementation
-        return True
 
 
 class PDFToExcelProcessor:
-    def __init__(self, pdf_folder_path, review_config, qa_sheet_name, de_sheet_name, max_questions, 
-                 ollama_url="http://localhost:11434", ollama_model="gemma2:latest", use_handler=True,
-                 use_gpu=True, max_content_length=None):
-        
+    """Reviews every PDF in a folder and records the results in Excel.
+
+    Folder layout created inside ``pdf_folder_path``:
+
+    - ``sheet/analysed.xlsx``: the Excel workbook, with one sheet for
+      quality-assessment scores and one for extracted data fields.
+    - ``analysed/``: PDFs that passed the cutoff/excluding-question checks.
+    - ``rejected/``: PDFs that did not.
+    - ``debug_logs/``: per-PDF text files with the exact prompt sent and
+      response received, for troubleshooting parsing issues.
+    - ``llm_responses.log``: a single running log of every LLM response,
+      in processing order.
+    """
+
+    def __init__(
+        self,
+        pdf_folder_path: str,
+        review_config: str,
+        qa_sheet_name: str,
+        de_sheet_name: str,
+        max_questions: int = 10,
+        llm_config_path: Optional[str] = None,
+        api_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        max_content_length: Optional[int] = None,
+        timeout: int = 600,
+    ) -> None:
+        """Set up folders, the LLM client, and the review configuration.
+
+        Args:
+            pdf_folder_path: Folder containing the PDFs to review. The
+                ``analysed/``, ``rejected/``, and ``sheet/`` subfolders are
+                created inside it.
+            review_config: Path to a YAML file defining the quality
+                -assessment questions, cutoff score, excluding questions,
+                and data-extraction fields (see ``config/review_data.yaml``
+                for the expected schema).
+            qa_sheet_name: Name of the Excel sheet for QA results.
+            de_sheet_name: Name of the Excel sheet for DE results.
+            max_questions: Number of PDFs to process before starting a new
+                logical conversation with the LLM (see
+                :meth:`~reviewbygpt.lib.llm_client.LLMClient.new_conversation`).
+            llm_config_path: Optional path to a JSON file with LLM backend
+                settings. See :class:`~reviewbygpt.lib.llm_client.LLMClient`
+                for the full configuration precedence rules.
+            api_url: LLM API URL, overriding ``llm_config_path``/env vars.
+            api_key: LLM API key, overriding ``llm_config_path``/env vars.
+            model: LLM model name, overriding ``llm_config_path``/env vars.
+            max_content_length: Optional cap on extracted PDF text length
+                before it's sent to the LLM.
+            timeout: Per-request HTTP timeout, in seconds, for LLM calls.
+        """
         self.pdf_folder_path = pdf_folder_path
-        
         self.analysed_folder_path = os.path.join(pdf_folder_path, "analysed")
         self.excel_file_path = os.path.join(pdf_folder_path, "sheet")
         self.rejected_file_path = os.path.join(pdf_folder_path, "rejected")
@@ -275,341 +93,318 @@ class PDFToExcelProcessor:
 
         self.qa_sheet_name = qa_sheet_name
         self.de_sheet_name = de_sheet_name
-        self.use_gpu = use_gpu
-        self.use_handler = use_handler
-        
-        # Initialize Ollama manager with GPU support and no content truncation
-        self.ollama_manager = OllamaInteractionManager(
-            base_url=ollama_url, 
-            model=ollama_model, 
-            use_gpu=use_gpu,
-            max_content_length=max_content_length
-        )
-        
-        self.response_handler = ResponseHandler()
-        self.excel_parser = ExcelDataParser(self.excel_file_path)
-        self.review_parser = ReviewDataParser(review_config)
-        self.folder_names = ["accepted", "rejected", "sheet"]
         self.max_questions = max_questions
 
-        # Load quality assessment and data extraction fields
+        self.llm_client = LLMClient(
+            config_path=llm_config_path,
+            api_url=api_url,
+            api_key=api_key,
+            model=model,
+            max_content_length=max_content_length,
+            timeout=timeout,
+        )
+
+        self.excel_parser = ExcelDataParser(self.excel_file_path)
+        self.review_parser = ReviewDataParser(review_config)
+
+        # Load the review schema once up front so it doesn't need to be
+        # re-read from disk for every PDF processed.
         self.qa_fields = self.review_parser.get_all_quality_assessment_fields()
         self.data_extraction_fields = self.review_parser.get_all_data_extraction_fields()
         self.cutoff_score = self.review_parser.get_cutoff_score()
         self.excluding_questions = self.review_parser.get_all_excluding_questions()
 
-    def initiate_ollama_manager(self):
-        """Initialize connection to Ollama"""
+    def initiate_llm_client(self) -> bool:
+        """Best-effort check that the configured LLM backend is reachable.
+
+        A False return is logged as a warning, not treated as fatal --
+        see :meth:`~reviewbygpt.lib.llm_client.LLMClient.verify_connection`
+        for why some backends can't be probed ahead of time.
+
+        Returns:
+            Whatever :meth:`LLMClient.verify_connection` returned.
+        """
         try:
-            if self.ollama_manager.verify_connection():
-                logger.info("Successfully connected to Ollama")
+            if self.llm_client.verify_connection():
+                logger.info("Successfully connected to the LLM backend")
                 return True
-            else:
-                logger.error("Failed to connect to Ollama")
-                return False
+            logger.warning("Could not verify LLM backend connectivity; continuing anyway")
+            return False
         except Exception as e:
-            logger.error(f"Error initiating Ollama manager: {e}")
+            logger.warning(f"Error verifying LLM backend connection: {e}")
             return False
 
     def get_pdf_paths(self):
+        """List the full paths of every PDF directly inside ``pdf_folder_path``.
+
+        Returns:
+            list[str]: Paths of files ending in ``.pdf`` (case-insensitive).
+
+        Raises:
+            FileNotFoundError: If ``pdf_folder_path`` does not exist.
+        """
         if not os.path.exists(self.pdf_folder_path):
             raise FileNotFoundError(f"The folder '{self.pdf_folder_path}' does not exist.")
-        return [os.path.join(self.pdf_folder_path, f) for f in os.listdir(self.pdf_folder_path) if f.lower().endswith(".pdf")]
+        return [
+            os.path.join(self.pdf_folder_path, f)
+            for f in os.listdir(self.pdf_folder_path)
+            if f.lower().endswith(".pdf")
+        ]
 
-    def send_pdf_to_analysis(self, pdf_path, prompt):
-        """Send PDF content and analysis prompt to Ollama"""
-        try:
-            # Extract text from PDF
-            pdf_content = self.ollama_manager.extract_text_from_pdf(pdf_path)
-            if not pdf_content:
-                logger.error(f"Could not extract text from PDF: {pdf_path}")
-                return None
-            
-            # Log information about the content and prompt being sent
-            pdf_content_length = len(pdf_content)
-            prompt_length = len(prompt)
-            logger.info(f"Preparing to send PDF content ({pdf_content_length} chars) and prompt ({prompt_length} chars) to Ollama")
-            
-            # Create a debug file with the exact content being sent
-            debug_dir = os.path.join(os.path.dirname(pdf_path), "debug_logs")
-            os.makedirs(debug_dir, exist_ok=True)
-            
-            pdf_filename = os.path.basename(pdf_path)
-            debug_filename = os.path.join(debug_dir, f"{os.path.splitext(pdf_filename)[0]}_debug.txt")
-            
-            with open(debug_filename, 'w', encoding='utf-8') as f:
-                f.write("===== PDF CONTENT =====\n\n")
-                f.write(pdf_content[:5000])  # First 5000 chars for the debug file
-                f.write("\n\n... [content truncated for debug file only] ...\n\n")
-                f.write("===== PROMPT =====\n\n")
-                f.write(prompt)
-            
-            logger.info(f"Saved debug content to {debug_filename}")
-                
-            # Send prompt and PDF content to Ollama
-            response = self.ollama_manager.send_prompt(prompt, pdf_content)
-            
-            # Log information about the response
-            if response:
-                response_length = len(response)
-                logger.info(f"Received response from Ollama: {response_length} characters")
-                
-                # Log the full response text
-                logger.info("===== LLM RESPONSE BEGIN =====")
-                logger.info(response[:1000] + "..." if len(response) > 1000 else response)  # Truncate in logs only
-                logger.info("===== LLM RESPONSE END =====")
-                
-                # Save the response to a debug file
-                response_filename = os.path.join(debug_dir, f"{os.path.splitext(pdf_filename)[0]}_response.txt")
-                with open(response_filename, 'w', encoding='utf-8') as f:
-                    f.write(response)
-                logger.info(f"Saved response to {response_filename}")
-            else:
-                logger.error("No response received from Ollama")
-                
-            return response
-        except Exception as e:
-            logger.error(f"Error sending PDF for analysis: {e}")
+    def _write_debug_file(self, pdf_path: str, suffix: str, content: str) -> str:
+        """Write a troubleshooting artifact for a PDF into its ``debug_logs/`` folder.
+
+        Every PDF processed gets one ``<pdf-stem>_<suffix>.txt`` file per
+        artifact (prompt sent, raw extracted text, raw response) so that a
+        response that doesn't parse the way :class:`ReviewDataParser` expects
+        can be inspected after the fact.
+
+        Args:
+            pdf_path: Path to the PDF being processed.
+            suffix: Short label identifying the artifact, e.g. ``"prompt"``.
+            content: The text to write.
+
+        Returns:
+            The full path of the debug file that was written.
+        """
+        debug_dir = os.path.join(os.path.dirname(pdf_path), "debug_logs")
+        os.makedirs(debug_dir, exist_ok=True)
+
+        pdf_stem = os.path.splitext(os.path.basename(pdf_path))[0]
+        debug_path = os.path.join(debug_dir, f"{pdf_stem}_{suffix}.txt")
+
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        logger.info(f"Saved {suffix} debug file to {debug_path}")
+        return debug_path
+
+    def send_pdf_to_analysis(self, pdf_path: str, prompt: str) -> Optional[str]:
+        """Extract a PDF's text and send it, with the prompt, to the LLM.
+
+        Args:
+            pdf_path: Path to the PDF to analyse.
+            prompt: The analysis prompt to send alongside the PDF text.
+
+        Returns:
+            The LLM's response text, or None if PDF extraction or the LLM
+            call failed.
+        """
+        pdf_content = self.llm_client.extract_text_from_pdf(pdf_path)
+        if not pdf_content:
+            logger.error(f"Could not extract text from PDF: {pdf_path}")
             return None
 
-    def move_analysed_file(self, file_path):
-        if not os.path.exists(self.analysed_folder_path):
-            os.makedirs(self.analysed_folder_path, exist_ok=True)
+        # Only the first 5000 characters are kept in the debug file -- the
+        # full text is already what gets sent to the LLM; the debug copy is
+        # just a sanity-check sample, not meant to duplicate the whole PDF.
+        preview = pdf_content[:5000]
+        if len(pdf_content) > 5000:
+            preview += "\n\n... [content truncated for debug file only] ..."
+        self._write_debug_file(pdf_path, "pdf_extract", preview)
+
+        response = self.llm_client.send_prompt(prompt, pdf_content)
+
+        if response:
+            self._write_debug_file(pdf_path, "response", response)
+        else:
+            logger.error("No response received from the LLM")
+
+        return response
+
+    def move_analysed_file(self, file_path: str) -> None:
+        """Move a PDF into ``analysed/`` (i.e. it passed the review checks).
+
+        Args:
+            file_path: Path to the PDF to move.
+        """
+        os.makedirs(self.analysed_folder_path, exist_ok=True)
         try:
             shutil.move(file_path, self.analysed_folder_path)
             logger.info(f"Moved '{file_path}' to '{self.analysed_folder_path}'.")
         except Exception as e:
             logger.error(f"Error moving file '{file_path}': {e}")
-            
-    def move_rejected_file(self, file_path):
-        if not os.path.exists(self.rejected_file_path):
-            os.makedirs(self.rejected_file_path, exist_ok=True)
+
+    def move_rejected_file(self, file_path: str) -> None:
+        """Move a PDF into ``rejected/`` (i.e. it failed the review checks).
+
+        Args:
+            file_path: Path to the PDF to move.
+        """
+        os.makedirs(self.rejected_file_path, exist_ok=True)
         try:
             shutil.move(file_path, self.rejected_file_path)
             logger.info(f"Moved '{file_path}' to '{self.rejected_file_path}'.")
         except Exception as e:
             logger.error(f"Error moving file '{file_path}': {e}")
-            
-    def create_folders(self):
+
+    def create_folders(self) -> None:
+        """Create the ``analysed/``, ``sheet/``, and ``rejected/`` folders.
+
+        If any folder fails to be created, all of them are torn down again
+        via :meth:`delete_folders` to avoid leaving a half-initialized
+        working directory behind.
+        """
         for folder in self.folder_pths:
             try:
-                # Check if folder exists, and if not, create
                 Path(folder).mkdir(parents=True, exist_ok=True)
-                print(f"Created folder {folder}.")
-            except Exception as e:
-                print(f"Unable to create folder: {folder}.")
+                logger.info(f"Created folder {folder}.")
+            except Exception:
+                logger.error(f"Unable to create folder: {folder}.")
                 self.delete_folders()
-                
-    def delete_folders(self):
+
+    def delete_folders(self) -> None:
+        """Remove the ``analysed/``, ``sheet/``, and ``rejected/`` folders, if present."""
         for folder in self.folder_pths:
             try:
-                # Check if folder exists, and if true, remove it
                 if os.path.exists(folder) and os.path.isdir(folder):
                     shutil.rmtree(folder)
-            except Exception as e:
-                print(f"Unable to delete folder: {folder}.")
+            except Exception:
+                logger.error(f"Unable to delete folder: {folder}.")
 
-    def run(self):
-        # Create folder for analysis
+    def _process_single_pdf(self, pdf_path: str, response_log_file: str) -> None:
+        """Run the full review pipeline for one PDF.
+
+        Builds the prompt, calls the LLM, parses QA/DE data out of the
+        response, writes it to Excel, and moves the PDF to ``analysed/`` or
+        ``rejected/``. Any exception raised while processing this single
+        file is caught and logged here so that one bad PDF doesn't abort
+        the whole batch in :meth:`run`.
+
+        Args:
+            pdf_path: Path to the PDF to process.
+            response_log_file: Path to the consolidated log file that every
+                PDF's raw LLM response gets appended to.
+        """
+        try:
+            prompt = self.review_parser.get_analysis_prompt()
+            self._write_debug_file(pdf_path, "prompt", prompt)
+
+            response = self.send_pdf_to_analysis(pdf_path, prompt)
+
+            # Record the outcome (even a missing response) to the
+            # consolidated log so the full run can be reviewed afterwards.
+            with open(response_log_file, "a", encoding="utf-8") as log_file:
+                log_file.write(f"\n\n{'=' * 80}\n")
+                log_file.write(f"PDF: {os.path.basename(pdf_path)}\n")
+                log_file.write(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                log_file.write(f"{'=' * 80}\n\n")
+                log_file.write(response if response else "*** NO RESPONSE RECEIVED ***")
+
+            if not response:
+                logger.warning(f"No response for file: {pdf_path}")
+                return
+
+            # Data extraction is parsed first purely so its TITLE field can
+            # be reused as the paper's display title in the QA sheet too.
+            de_data = self.review_parser.get_data_extraction_text(response)
+
+            paper_title = None
+            for title_key in ("TITLE", "Title", "title"):
+                if title_key in de_data:
+                    paper_title = de_data[title_key]
+                    logger.info(f"Found title: {paper_title}")
+                    break
+            if not paper_title:
+                paper_title = os.path.splitext(os.path.basename(pdf_path))[0]
+                logger.warning(f"No title found in data extraction, using filename: {paper_title}")
+
+            qa_data = self.review_parser.get_quality_assessment_text(response)
+            # "TOTAL_SCORE" is the exact key ReviewDataParser.preprocess_qa_data
+            # stores the aggregate score under -- must match here and in the
+            # Excel header below, or the score silently reads back as 0.
+            paper_score = qa_data.pop("TOTAL_SCORE", 0)
+            # "TITLE" (not "Title") matches the header ExcelDataParser
+            # auto-prepends for QA sheets in apply_excel_template().
+            qa_data["TITLE"] = paper_title
+
+            if qa_data:
+                self.excel_parser.fill_excel_with_data(self.qa_sheet_name, {**qa_data, "TOTAL_SCORE": paper_score})
+                logger.info(f"Total QA Score: {paper_score}")
+            else:
+                logger.warning(f"No QA data found for file: {pdf_path}")
+
+            # Excluding questions: if any of them scored 0, the paper is
+            # rejected outright regardless of its total score. Stored score
+            # keys are "<question_id>_SCORE" (e.g. "QE1_SCORE").
+            for e_question in self.excluding_questions:
+                if qa_data.get(f"{e_question}_SCORE", 1) == 0:
+                    logger.info(f"Paper does not meet the score needed for excluding question: {e_question}")
+                    self.move_rejected_file(pdf_path)
+                    return
+
+            if paper_score and paper_score >= self.cutoff_score:
+                logger.info(f"Paper score ({paper_score}) meets the cutoff ({self.cutoff_score}). Extracting DE data...")
+                if de_data:
+                    # Keep the DE sheet's title consistent with the QA sheet's.
+                    if "TITLE" in de_data and paper_title:
+                        de_data["TITLE"] = paper_title
+                    self.excel_parser.fill_excel_with_data(self.de_sheet_name, de_data)
+                else:
+                    logger.warning(f"No DE data found for file: {pdf_path}")
+            else:
+                logger.info(
+                    f"Paper score ({paper_score}) does not meet the cutoff ({self.cutoff_score}). "
+                    "Skipping DE data extraction."
+                )
+                self.move_rejected_file(pdf_path)
+                return
+
+            self.move_analysed_file(pdf_path)
+        except Exception as e:
+            logger.error(f"Error processing file '{pdf_path}': {e}")
+
+    def run(self) -> bool:
+        """Run the full pipeline over every PDF in ``pdf_folder_path``.
+
+        Sets up the working folders and Excel template, then processes each
+        PDF in turn via :meth:`_process_single_pdf`. Per-file failures are
+        logged and skipped rather than aborting the whole batch.
+
+        Returns:
+            True once every PDF has been processed.
+        """
         self.create_folders()
-        
-        # Initialize the Excel sheets
+
         self.excel_parser.create_excel_file()
+
         qa_identifiers = []
         for qa in self.qa_fields:
-            qa_identifiers.append(f"{qa["id"]}")
-            qa_identifiers.append(f"{qa["id"]}_SCORE")
-
+            qa_identifiers.append(qa["id"])
+            qa_identifiers.append(f"{qa['id']}_SCORE")
         self.excel_parser.apply_excel_template(self.qa_sheet_name, ["TITLE"] + qa_identifiers + ["TOTAL_SCORE"])
+
         de_identifiers = [de["key"] for de in self.data_extraction_fields]
         self.excel_parser.apply_excel_template(self.de_sheet_name, de_identifiers)
 
-        # Initialize handler
-        handler = None
-        if self.use_handler:
-            try:
-                handler = ChatGPTInteractionManager()
-                handler.launch_chatpgt_page()
-                handler.login()
-                logger.info("ChatGPT handler initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize ChatGPT handler: {e}")
-                return False
-        else:
-            if not self.initiate_ollama_manager():
-                logger.error("Failed to initialize Ollama connection. Exiting.")
-                return False
+        # Best-effort connectivity check; a failure here is logged but does
+        # not stop the run (see initiate_llm_client's docstring).
+        self.initiate_llm_client()
 
-        # Number of questions made
-        num_question = 0
-        
-        # Configure log file for responses
         response_log_file = os.path.join(self.pdf_folder_path, "llm_responses.log")
-        with open(response_log_file, 'w', encoding='utf-8') as log_file:
+        with open(response_log_file, "w", encoding="utf-8") as log_file:
             log_file.write(f"=== LLM Response Log - Started at {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n\n")
-            if self.use_handler:
-                log_file.write(f"Using ChatGPT web interface\n")
-            else:
-                log_file.write(f"Using Ollama model: {self.ollama_manager.model}\n")
-                log_file.write(f"GPU acceleration: {'enabled' if self.use_gpu else 'disabled'}\n")
-        
-        logger.info(f"Created LLM response Log file at: {response_log_file}")
-        
+            log_file.write(f"Using LLM backend at {self.llm_client.api_url} (model: {self.llm_client.model})\n")
+        logger.info(f"Created LLM response log file at: {response_log_file}")
+
+        num_processed = 0
         for pdf_path in self.get_pdf_paths():
-            if pdf_path.lower().endswith(".pdf"):
-                if num_question == self.max_questions:
-                    if self.use_handler:
-                        handler.new_chat()
-                    else:
-                        self.ollama_manager.new_conversation()
-                    num_question = 0
-                
-                try:
-                    logger.info(f"Processing file: {pdf_path}")
-                    
-                    # Get the analysis prompt
-                    prompt = self.review_parser.get_analysis_prompt()
-                    
-                    # Log prompt for debugging
-                    debug_dir = os.path.join(os.path.dirname(pdf_path), "debug_logs")
-                    os.makedirs(debug_dir, exist_ok=True)
-                    
-                    pdf_filename = os.path.basename(pdf_path)
-                    prompt_debug_filename = os.path.join(debug_dir, f"{os.path.splitext(pdf_filename)[0]}_prompt.txt")
-                    
-                    with open(prompt_debug_filename, 'w', encoding='utf-8') as f:
-                        f.write(prompt)
-                    
-                    logger.info(f"Saved prompt to {prompt_debug_filename}")
-                    
-                    # Send PDF and prompt for analysis
-                    response = None
-                    if self.use_handler:
-                        try:
-                            # First upload the PDF
-                            logger.info(f"Uploading PDF file to ChatGPT: {pdf_path}")
-                            if not handler.input_external_file(pdf_path):
-                                logger.error(f"Failed to upload PDF file: {pdf_path}")
-                                continue
-                                
-                            # Wait for the file to be processed
-                            time.sleep(5)
-                            
-                            # Now send the prompt as a separate message
-                            logger.info(f"Sending analysis prompt (length: {len(prompt)})")
-                            response = handler.send_and_receive(prompt)
-                            
-                            if not response:
-                                logger.error("No response received from ChatGPT")
-                                continue
-                                
-                        except Exception as e:
-                            logger.error(f"Error processing with ChatGPT: {e}")
-                            continue
-                    else:
-                        response = self.send_pdf_to_analysis(pdf_path, prompt)
-
-                    num_question += 1
-                    
-                    # Write the response to the consolidated log file
-                    with open(response_log_file, 'a', encoding='utf-8') as log_file:
-                        log_file.write(f"\n\n{'='*80}\n")
-                        log_file.write(f"PDF: {os.path.basename(pdf_path)}\n")
-                        log_file.write(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                        log_file.write(f"{'='*80}\n\n")
-                        
-                        if response:
-                            log_file.write(response)
-                        else:
-                            log_file.write("*** NO RESPONSE RECEIVED ***")
-                    
-                    # Save the full response to a separate file for debugging
-                    if response:
-                        response_filename = os.path.join(debug_dir, f"{os.path.splitext(pdf_filename)[0]}_response.txt")
-                        with open(response_filename, 'w', encoding='utf-8') as f:
-                            f.write(response)
-                        logger.info(f"Saved full response to {response_filename}")
-                    
-                    if not response:
-                        logger.warning(f"No response for file: {pdf_path}")
-                        continue
-                    
-                    # IMPORTANT: First extract the DE data to get the title
-                    de_data = self.review_parser.get_data_extraction_text(response)
-                    
-                    # Try to get the title - first check for different key variations
-                    paper_title = None
-                    for title_key in ["TITLE", "Title", "title"]:
-                        if title_key in de_data:
-                            paper_title = de_data[title_key]
-                            logger.info(f"Found title: {paper_title}")
-                            break
-                    
-                    # If no title found, use the PDF filename as a fallback
-                    if not paper_title:
-                        paper_title = os.path.splitext(os.path.basename(pdf_path))[0]
-                        logger.warning(f"No title found in data extraction, using filename: {paper_title}")
-                    
-                    # Extract QA data and calculate average score
-                    qa_data = self.review_parser.get_quality_assessment_text(response)
-                    paper_score = qa_data.pop("Total Score", 0)  # Extract average score for logging
-                    
-                    # Add title to QA data
-                    qa_data["Title"] = paper_title
-                    
-                    if qa_data:
-                        # Add the QA data with title and score to the Excel sheet
-                        self.excel_parser.fill_excel_with_data(self.qa_sheet_name, {**qa_data, "Total Score": paper_score})
-                        logger.info(f"Total QA Score: {paper_score}")
-                    else:
-                        logger.warning(f"No QA data found for file: {pdf_path}")
-                        
-                    # Check if any of the excluding questions have a score equal to "0"
-                    check_e_question = 0
-                    for e_question in self.excluding_questions:
-                        if qa_data.get(f"{e_question} Score", 1) == 0:  # Default to 1 if key not found
-                            logger.info(f"Paper does not match the score needed for excluding question: {e_question}")
-                            self.move_rejected_file(pdf_path)
-                            check_e_question += 1
-                    
-                    if check_e_question != 0:
-                        continue
-                            
-                    # Extract and write DE data only if the score meets the cutoff
-                    if paper_score and paper_score >= self.cutoff_score:
-                        logger.info(f"Paper score ({paper_score}) meets the cutoff ({self.cutoff_score}). Extracting DE data...")
-                        if de_data:
-                            # Make sure the title in DE data matches what we used in QA data
-                            if "TITLE" in de_data and paper_title:
-                                de_data["TITLE"] = paper_title
-                                
-                            self.excel_parser.fill_excel_with_data(self.de_sheet_name, de_data)
-                        else:
-                            logger.warning(f"No DE data found for file: {pdf_path}")
-                    else:
-                        logger.info(f"Paper score ({paper_score}) does not meet the cutoff ({self.cutoff_score}). Skipping DE data extraction.")
-                        self.move_rejected_file(pdf_path)
-                        continue
-
-                    # Move the processed file to analysed folder
-                    self.move_analysed_file(pdf_path)
-                    
-                    # Add a small delay between processing files
-                    time.sleep(random.randint(1, 3))
-                    
-                except Exception as e:
-                    logger.error(f"Error processing file '{pdf_path}': {e}")
-                    
-            else:
+            if not pdf_path.lower().endswith(".pdf"):
                 logger.info(f"Skipping non-PDF file: {pdf_path}")
-        
-        # Close the browser when done
-        if self.use_handler and handler:
-            try:
-                handler.driver.close_connection()
-                logger.info("Closed ChatGPT browser session")
-            except Exception as e:
-                logger.warning(f"Error closing browser: {e}")
-                
+                continue
+
+            # Start a new logical conversation every `max_questions` PDFs.
+            if num_processed == self.max_questions:
+                self.llm_client.new_conversation()
+                num_processed = 0
+
+            logger.info(f"Processing file: {pdf_path}")
+            self._process_single_pdf(pdf_path, response_log_file)
+            num_processed += 1
+
+            # A small, randomized delay between requests as a courtesy to
+            # rate-limited or shared backends.
+            time.sleep(random.randint(1, 3))
+
         logger.info("Completed PDF processing")
         return True

@@ -1,11 +1,22 @@
+"""Read and write the Excel report produced by the review pipeline.
+
+:class:`ExcelDataParser` owns a single workbook (``analysed.xlsx``) with one
+sheet for quality-assessment scores and one for extracted data fields. It is
+deliberately defensive about the workbook file itself (backing up, detecting
+corruption, recreating from scratch, falling back to a timestamped recovery
+file) since a long batch run writing to the same file repeatedly is exactly
+the kind of workload where a half-written/corrupted file is likely.
+"""
+
 import os
 import logging
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 import shutil
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Only fetch a logger here -- logging.basicConfig() is called once, by the
+# application entry point (reviewbygpt/scripts/main.py), so importing this
+# module never has the side effect of configuring logging globally.
 logger = logging.getLogger(__name__)
 
 class ExcelDataParser:
@@ -222,8 +233,9 @@ class ExcelDataParser:
                 # Set the cell value
                 cell = ws.cell(row=next_row, column=col_idx, value=value)
                 
-                # Apply formatting based on content
-                if header == "Title":
+                # Apply formatting based on content. Compared case-insensitively
+                # since callers may use "Title" or "TITLE" depending on the sheet.
+                if header.upper() == "TITLE":
                     # Make title bold
                     cell.font = Font(bold=True)
                 elif "SCORE" in header:
